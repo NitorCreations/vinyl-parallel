@@ -1,0 +1,37 @@
+{
+  "name": "vinyl-parallel",
+  "version": "0.1.0",
+  "description": "Run gulp tasks in parallel using separate processes",
+  "main": "index.js",
+  "directories": {
+    "example": "example"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NitorCreations/vinyl-parallel.git"
+  },
+  "keywords": [
+    "gulp",
+    "vinyl",
+    "parallel"
+  ],
+  "author": "Jonas Berlin <jonas.berlin@nitorcreations.com>",
+  "license": "SEE LICENSE IN LICENSE",
+  "bugs": {
+    "url": "https://github.com/NitorCreations/vinyl-parallel/issues"
+  },
+  "homepage": "https://github.com/NitorCreations/vinyl-parallel#readme",
+  "dependencies": {
+    "through2": "2.0.1",
+    "tiny-worker": "1.1.4",
+    "util": "0.10.3"
+  },
+  "devDependencies": {
+    "multipipe": "0.3.1",
+    "readable-stream": "2.1.4",
+    "vinyl-buffer": "1.0.0"
+  }
+}

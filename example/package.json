@@ -1,0 +1,14 @@
+{
+  "name": "example",
+  "version": "1.0.0",
+  "description": "example for vinyl-parallel",
+  "main": "gulpfile.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Jonas Berlin <jonas.berlin@nitorcreations.com>",
+  "license": "ISC"
+  "devDependencies": {
+    "gulp": "3.9.1"
+  }
+}
