@@ -5,36 +5,38 @@ var util = require('util');
 var through2 = require('through2');
 var buffer = require('vinyl-buffer');
 var multipipe = require('multipipe');
+var fs = require('fs');
 
 var nextId = 100;
 
 function VinylParallel(file) {
-  Worker.call(this, file);
+  var file = fs.realpathSync(file);
+  this.worker = new Worker(eval("(function(){\nrequire(" + JSON.stringify(file) + ");})"));
+  this.worker.onmessage = this._onmessage.bind(this);
+  this.worker.onerror = this._onerror.bind(this);
   this.vinyls = {};
   this.chunks = {};
 }
 
-util.inherits(VinylParallel, Worker);
-
 VinylParallel.prototype.run = function run(jobName, jobArg) {
-  var worker = this;
+  var thiz = this;
   var vinylId = nextId++;
-  this.postMessage({
-    type: 'vinylCreateRequest',
+  this.worker.postMessage({
+    type: 'VinylCreateRequest',
     vinylId: vinylId,
     jobName: jobName,
     jobArg: jobArg
   });
   var stream = through2.obj(write, end);
   this.vinyls[vinylId] = { stream: stream };
-  return multipipe(buffer, stream); // TODO support file data streaming instead of using buffer
+  return multipipe(buffer(), stream); // TODO support file data streaming instead of using buffer
 
   // assumption based on understanding: write will not be called again unti cb() is called
   function write(chunk, enc, cb) {
     var vinylChunkId = nextId++;
-    worker.vinylChunks[vinylChunkId] = { type: 'write', cb: cb };
-    worker.postMessage({
-      type: 'vinylChunkRequest',
+    thiz.chunks[vinylChunkId] = { type: 'write', cb: cb };
+    thiz.worker.postMessage({
+      type: 'VinylChunkRequest',
       vinylId: vinylId,
       vinylChunkId: vinylChunkId,
       chunk: chunk,
@@ -44,26 +46,27 @@ VinylParallel.prototype.run = function run(jobName, jobArg) {
 
   function end(cb) {
     var vinylChunkId = nextId++;
-    worker.vinylChunks[vinylChunkId] = { type: 'end', cb: cb };
-    worker.postMessage({
-      type: 'vinylChunkEndRequest',
+    thiz.chunks[vinylChunkId] = { type: 'end', cb: cb };
+    thiz.worker.postMessage({
+      type: 'VinylChunkEndRequest',
       vinylId: vinylId,
       vinylChunkId: vinylChunkId
     });
   }
 };
 
-VinylParallel.prototype.onmessage = function onmessage(msg) {
+VinylParallel.prototype._onmessage = function onmessage(msg) {
   var data = msg.data;
+  console.log("[master] Message:", data);
   switch (data.type) {
-    case 'vinylCreateResponse': {
+    case 'VinylCreateResponse': {
       var vinylId = data.vinylId;
       this.vinyls[vinylId].created = true;
       break;
     }
-    case 'vinylChunkResponse': {
+    case 'VinylChunkResponse': {
       var vinylChunkId = data.vinylChunkId;
-      var vinylChunk = this.vinylChunks[vinylChunkId];
+      var vinylChunk = this.chunks[vinylChunkId];
       if (vinylChunk.type !== 'write') {
         throw new Error('Protocol error, expected "write" but got: ' + vinylChunk.type);
       }
@@ -72,7 +75,7 @@ VinylParallel.prototype.onmessage = function onmessage(msg) {
     }
     case 'VinylChunkEndResponse': {
       var vinylChunkId = data.vinylChunkId;
-      var vinylChunk = this.vinylChunks[vinylChunkId];
+      var vinylChunk = this.chunks[vinylChunkId];
       if (vinylChunk.type !== 'end') {
         throw new Error('Protocol error, expected "end" but got: ' + vinylChunk.type);
       }
@@ -85,7 +88,7 @@ VinylParallel.prototype.onmessage = function onmessage(msg) {
         var c = data.chunks[i];
         vinyl.stream.push(c.chunk, c.enc);
       }
-      this.postMessage({
+      this.worker.postMessage({
         type: 'ReturnChunkResponse',
         vinylId: data.vinylId
       });
@@ -94,7 +97,7 @@ VinylParallel.prototype.onmessage = function onmessage(msg) {
   }
 };
 
-VinylParallel.prototype.onerror = function onerror(err) {
+VinylParallel.prototype._onerror = function onerror(err) {
   console.log('VinylParallel worker error:', err);
 };
 
@@ -111,4 +114,4 @@ VinylParallel.prototype.stop = function stop() {
 
 VinylParallel.Slave = require('./slave');
 
-module.exports = VinylParalllel;
+module.exports = VinylParallel;

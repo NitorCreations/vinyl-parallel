@@ -15,7 +15,7 @@ function Slave(self) {
 }
 
 Slave.prototype.on = function on(jobName, handler) {
-  this.handlers[name] = handler;
+  this.handlers[jobName] = handler;
 };
 
 Slave.prototype._onmessage = function onmessage(msg) {
@@ -24,12 +24,15 @@ Slave.prototype._onmessage = function onmessage(msg) {
   console.log('[slave] Message:', data);
   switch (data.type) {
     case 'VinylCreateRequest': {
+      console.log("[slave] 0");
       var jobName = data.jobName;
+      console.log("[slave] 1");
       if (!(jobName in this.handlers)) {
         console.error('[slave] No handler for "' + jobName + '". Processing jammed.');
         return;
       }
       var vinylId = data.vinylId;
+      console.log("[slave] 4");
       var vinyl = this.vinyls[vinylId] = {
         jobName: jobName,
 
@@ -40,8 +43,9 @@ Slave.prototype._onmessage = function onmessage(msg) {
         readable: new Readable({objectMode: true, read: function read() {
           if (vinyl.pending) {
             vinyl.readableReady = this.push(vinyl.pendingChunk, vinyl.pendingEnc);
+            console.log("data = ", data);
             self.postMessage({
-              type: pendingChunk !== null ? 'VinylChunkResponse' : 'VinylChunkEndResponse',
+              type: vinyl.pendingChunk !== null ? 'VinylChunkResponse' : 'VinylChunkEndResponse',
               vinylId: vinylId,
               vinylChunkId: data.vinylChunkId
             });
@@ -52,17 +56,27 @@ Slave.prototype._onmessage = function onmessage(msg) {
         }}),
 
         writeCb: null,
-        writable: new Writable({objectMode: true, decodeStrings: false, writev: function write(chunk, encoding, cb) {
+        writable: new Writable({objectMode: true, decodeStrings: false, write: function write(chunk, encoding, cb) {
           vinyl.writeCb = cb;
           self.postMessage({
             type: 'ReturnChunkRequest',
             vinylId: vinylId,
-            //chunks: chunks.map(function(e) { return { chunk: e.chunk, enc: e.encoding };})
             chunks: [{chunk: chunk, enc: encoding}]
+          });
+        }, writev: function writev(chunks, cb) {
+          vinyl.writeCb = cb;
+          self.postMessage({
+            type: 'ReturnChunkRequest',
+            vinylId: vinylId,
+            chunks: chunks.map(function(e) { return { chunk: e.chunk, enc: e.encoding };})
           });
         }})
       };
-      var stream = this.handlers[jobName](data.jobArg);
+      console.log("[slave] 7");
+      var handler = this.handlers[jobName];
+      console.log("[slave] 8");
+      var stream = handler(vinyl.readable, data.jobArg);
+      console.log("[slave] 9");
       vinyl.writable.on('finish', function() {
         self.postMessage({
           type: 'ReturnChunkRequest',
@@ -71,7 +85,7 @@ Slave.prototype._onmessage = function onmessage(msg) {
         });
 
       });
-      vinyl.readable.pipe(stream).pipe(buffer).pipe(vinyl.writable); // TODO support file data streaming instead of using buffer
+      stream.pipe(buffer()).pipe(vinyl.writable); // TODO support file data streaming instead of using buffer
       this.self.postMessage({
         type: 'VinylCreateResponse',
         vinylId: vinylId
@@ -115,6 +129,9 @@ Slave.prototype._onmessage = function onmessage(msg) {
       vinyl.writecb = null;
       cb();
       break;
+    }
+    default: {
+      console.log("[slave] Unknown message type " + data.type);
     }
   }
 }
