@@ -11,14 +11,14 @@ gulp.task('sync-slow', function() {
   console.log("[gulpfile] default-task");
   return gulp.src('test*.js')
     .pipe(slowFilter({ foo: "bar" }))
-    .pipe(gulp.dest('target/'));
+    .pipe(gulp.dest('target/sync-slow/'));
 });
 
 gulp.task('sync-fast', function() {
   console.log("[gulpfile] default-task");
   return gulp.src('test*.js')
     .pipe(fastFilter({ foo: "bar" }))
-    .pipe(gulp.dest('target/'));
+    .pipe(gulp.dest('target/sync-fast/'));
 });
 
 gulp.task('sync', ['sync-slow', 'sync-fast']);
@@ -31,14 +31,14 @@ gulp.task('parallel-slow', function() {
   console.log("[gulpfile] default-task");
   return gulp.src('test*.js')
     .pipe(parallel.run('mySlowFilter', { foo: "bar" }))
-    .pipe(gulp.dest('target/'));
+    .pipe(gulp.dest('target/parallel-slow/'));
 });
 
 gulp.task('parallel-fast', function() {
   console.log("[gulpfile] default-task");
   return gulp.src('test*.js')
     .pipe(parallel.run('myFastFilter', { foo: "bar" }))
-    .pipe(gulp.dest('target/'));
+    .pipe(gulp.dest('target/parallel-fast/'));
 });
 
 gulp.task('parallel', ['parallel-slow', 'parallel-fast']);
