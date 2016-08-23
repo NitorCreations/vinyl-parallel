@@ -87,30 +87,34 @@ VinylParallel.prototype._onmessage = function onmessage(msg) {
       break;
     }
     case 'VinylChunkEndResponse': {
-      var vinylId = data.vinylId;
-      var vinyl = this.vinyls[vinylId];
-      var cb = vinyl.endcb;
-      vinyl.endcb = null;
-      cb();
-      this.active--;
-      this.maybeTerminate();
       break;
     }
     case 'ReturnChunkRequest': {
       var vinyl = this.vinyls[data.vinylId];
+      var endChunk = false;
       for (var i=0; i<data.chunks.length; ++i) {
         var c = data.chunks[i];
-	console.log("[master] chunk:", c);
-	if (c.chunk !== null) {
+        console.log("[master] chunk:", c);
+        if (c.chunk !== null) {
           vinyl.stream.push(decodeVinyl(c.chunk), c.enc);
-	} else {
+        } else {
           vinyl.stream.push(null);
-	}
+          endChunk = true;
+          break;
+        }
       }
       this._postMessage({
         type: 'ReturnChunkResponse',
         vinylId: data.vinylId
       });
+      if (endChunk) {
+        var cb = vinyl.endcb;
+        vinyl.endcb = null;
+        cb();
+        this.active--;
+        delete this.vinyls[data.vinylId];
+        this.maybeTerminate();
+      }
       break;
     }
   }
