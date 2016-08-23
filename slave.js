@@ -47,19 +47,22 @@ Slave.prototype._onmessage = function onmessage(msg) {
         readableReady: false,
         readable: new Readable({objectMode: true, read: function _read() {
           if (vinyl.pending) {
-	    console.log("[slave] _read() pending");
-            vinyl.readableReady = this.push(vinyl.pendingChunk, vinyl.pendingEnc);
-            console.log("[slave] data =", data);
-	    console.log("[slave] readableReady =", vinyl.readableReady);
+            console.log("[slave] _read() pending");
+            vinyl.pending = false;
+            vinyl.readableReady = false;
+            if (this.push(vinyl.pendingChunk, vinyl.pendingEnc)) { // NOTE: _read() may be called again during this call, so state needs to be clean before call
+              vinyl.readableReady = true;
+            }
+            console.log("[slave] readableReady =", vinyl.readableReady);
             thiz._postMessage({
               type: vinyl.pendingChunk !== null ? 'VinylChunkResponse' : 'VinylChunkEndResponse',
               vinylId: vinylId
             });
-            vinyl.pending = false;
           } else {
-	    console.log("[slave] _read() idle");
+            console.log("[slave] _read() idle");
             vinyl.readableReady = true;
           }
+          console.log("[slave] /_read");
         }}),
 
         writeCb: null,
@@ -110,9 +113,11 @@ Slave.prototype._onmessage = function onmessage(msg) {
       vinyl.pendingChunk = decodeVinyl(data.chunk);
       vinyl.pendingEnc = data.enc;
       if (vinyl.readableReady) {
+        console.log("[slave] chunk req immediate");
         vinyl.readable._read();
+        console.log("[slave] /chunk req immediate");
       } else {
-	console.log("[slave] chunk req queued");
+        console.log("[slave] chunk req queued");
       }
       break;
     }
