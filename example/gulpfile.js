@@ -43,4 +43,6 @@ gulp.task('parallel-fast', function() {
 
 gulp.task('parallel', ['parallel-slow', 'parallel-fast']);
 
+gulp.task('all', ['parallel', 'sync']);
+
 gulp.on('stop', parallel.stop);

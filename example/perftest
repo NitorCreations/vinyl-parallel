@@ -1,0 +1,27 @@
+#!/bin/bash
+
+set -e
+
+cd "$(dirname "$0")"
+
+if [ $(git status --porcelain | wc -l) != 0 ]; then
+  echo Uncommitted changes, aborting
+  exit 1
+fi
+
+sha=$(git rev-parse HEAD)
+
+for task in sync sync-fast sync-slow parallel parallel-fast paralell-slow all ; do
+  rm -rf target
+  echo Running gulp $task
+  (
+    if /usr/bin/time -p -o .perf.tmp gulp $task >/dev/null ; then
+      date +%s | tr '\n' '\t'
+      awk '{print $2}' < .perf.tmp | tr '\n' '\t'
+      rm .perf.tmp
+      echo "# $sha"
+    else
+      echo "Fail $task code $?" >&2
+    fi
+  ) >> .perf.${task}
+done
