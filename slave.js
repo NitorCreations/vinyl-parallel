@@ -2,9 +2,12 @@
 
 var readableStream = require('readable-stream');
 var buffer = require('vinyl-buffer');
+var common = require('./common');
 
 var Readable = readableStream.Readable;
 var Writable = readableStream.Writable;
+var encodeVinyl = common.encodeVinyl;
+var decodeVinyl = common.decodeVinyl;
 
 function Slave(self) {
   self.onmessage = this._onmessage.bind(this);
@@ -18,21 +21,23 @@ Slave.prototype.on = function on(jobName, handler) {
   this.handlers[jobName] = handler;
 };
 
+Slave.prototype._postMessage = function postMessage(msg) {
+  console.log("[slave] postMessage:", msg);
+  this.self.postMessage(msg);
+};
+
 Slave.prototype._onmessage = function onmessage(msg) {
-  var self = this.self;
+  var thiz = this;
   var data = msg.data;
-  console.log('[slave] Message:', data);
+  console.log('[slave] onmessage:', data);
   switch (data.type) {
     case 'VinylCreateRequest': {
-      console.log("[slave] 0");
       var jobName = data.jobName;
-      console.log("[slave] 1");
       if (!(jobName in this.handlers)) {
         console.error('[slave] No handler for "' + jobName + '". Processing jammed.');
         return;
       }
       var vinylId = data.vinylId;
-      console.log("[slave] 4");
       var vinyl = this.vinyls[vinylId] = {
         jobName: jobName,
 
@@ -40,17 +45,19 @@ Slave.prototype._onmessage = function onmessage(msg) {
         pendingChunk: null,
         pendingEnc: null,
         readableReady: false,
-        readable: new Readable({objectMode: true, read: function read() {
+        readable: new Readable({objectMode: true, read: function _read() {
           if (vinyl.pending) {
+	    console.log("[slave] _read() pending");
             vinyl.readableReady = this.push(vinyl.pendingChunk, vinyl.pendingEnc);
-            console.log("data = ", data);
-            self.postMessage({
+            console.log("[slave] data =", data);
+	    console.log("[slave] readableReady =", vinyl.readableReady);
+            thiz._postMessage({
               type: vinyl.pendingChunk !== null ? 'VinylChunkResponse' : 'VinylChunkEndResponse',
-              vinylId: vinylId,
-              vinylChunkId: data.vinylChunkId
+              vinylId: vinylId
             });
             vinyl.pending = false;
           } else {
+	    console.log("[slave] _read() idle");
             vinyl.readableReady = true;
           }
         }}),
@@ -58,35 +65,34 @@ Slave.prototype._onmessage = function onmessage(msg) {
         writeCb: null,
         writable: new Writable({objectMode: true, decodeStrings: false, write: function write(chunk, encoding, cb) {
           vinyl.writeCb = cb;
-          self.postMessage({
+          thiz._postMessage({
             type: 'ReturnChunkRequest',
             vinylId: vinylId,
-            chunks: [{chunk: chunk, enc: encoding}]
+            chunks: [{chunk: encodeVinyl(chunk), enc: encoding}]
           });
         }, writev: function writev(chunks, cb) {
           vinyl.writeCb = cb;
-          self.postMessage({
+          thiz._postMessage({
             type: 'ReturnChunkRequest',
             vinylId: vinylId,
-            chunks: chunks.map(function(e) { return { chunk: e.chunk, enc: e.encoding };})
+            chunks: chunks.map(function(e) { return { chunk: encodeVinyl(e.chunk), enc: e.encoding };})
           });
         }})
       };
-      console.log("[slave] 7");
       var handler = this.handlers[jobName];
-      console.log("[slave] 8");
       var stream = handler(vinyl.readable, data.jobArg);
-      console.log("[slave] 9");
       vinyl.writable.on('finish', function() {
-        self.postMessage({
+        vinyl.writeCb = function onFinishCb(){};
+        thiz._postMessage({
           type: 'ReturnChunkRequest',
           vinylId: vinylId,
           chunks: [{chunk: null}]
         });
 
       });
+      console.log("[slave] Connecting streams");
       stream.pipe(buffer()).pipe(vinyl.writable); // TODO support file data streaming instead of using buffer
-      this.self.postMessage({
+      thiz._postMessage({
         type: 'VinylCreateResponse',
         vinylId: vinylId
       });
@@ -95,18 +101,18 @@ Slave.prototype._onmessage = function onmessage(msg) {
     case 'VinylChunkRequest': {
       /*       type: 'vinylChunkRequest',
        vinylId: vinylId,
-       vinylChunkId: vinylChunkId,
        chunk: chunk,
        enc: enc
        */
       var vinylId = data.vinylId;
       var vinyl = this.vinyls[vinylId];
       vinyl.pending = true;
-      vinyl.pendingChunk = data.chunk;
+      vinyl.pendingChunk = decodeVinyl(data.chunk);
       vinyl.pendingEnc = data.enc;
-      vinyl.pendingChunkId = data.vinylChunkId;
       if (vinyl.readableReady) {
         vinyl.readable._read();
+      } else {
+	console.log("[slave] chunk req queued");
       }
       break;
     }
@@ -116,7 +122,6 @@ Slave.prototype._onmessage = function onmessage(msg) {
       vinyl.pending = true;
       vinyl.pendingChunk = null;
       vinyl.pendingEnc = null;
-      vinyl.pendingChunkId = data.vinylChunkId;
       if (vinyl.readableReady) {
         vinyl.readable._read();
       }
@@ -125,8 +130,8 @@ Slave.prototype._onmessage = function onmessage(msg) {
     case 'ReturnChunkResponse': {
       var vinylId = data.vinylId;
       var vinyl = this.vinyls[vinylId];
-      var cb = vinyl.writecb;
-      vinyl.writecb = null;
+      var cb = vinyl.writeCb;
+      vinyl.writeCb = null;
       cb();
       break;
     }
@@ -134,6 +139,7 @@ Slave.prototype._onmessage = function onmessage(msg) {
       console.log("[slave] Unknown message type " + data.type);
     }
   }
+  console.log("[slave] /onmessage");
 }
 
 Slave.prototype._onerror = function onerror(err) {

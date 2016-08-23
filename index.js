@@ -6,6 +6,10 @@ var through2 = require('through2');
 var buffer = require('vinyl-buffer');
 var multipipe = require('multipipe');
 var fs = require('fs');
+var common = require('./common');
+
+var encodeVinyl = common.encodeVinyl;
+var decodeVinyl = common.decodeVinyl;
 
 var nextId = 100;
 
@@ -15,49 +19,60 @@ function VinylParallel(file) {
   this.worker.onmessage = this._onmessage.bind(this);
   this.worker.onerror = this._onerror.bind(this);
   this.vinyls = {};
-  this.chunks = {};
+  this.stop = VinylParallel.prototype.stop.bind(this);
 }
+
+VinylParallel.prototype._postMessage = function postMessage(msg) {
+  console.log("[master] postMessage:", msg);
+  this.worker.postMessage(msg);
+};
 
 VinylParallel.prototype.run = function run(jobName, jobArg) {
   var thiz = this;
   var vinylId = nextId++;
-  this.worker.postMessage({
+  this._postMessage({
     type: 'VinylCreateRequest',
     vinylId: vinylId,
     jobName: jobName,
     jobArg: jobArg
   });
   var stream = through2.obj(write, end);
-  this.vinyls[vinylId] = { stream: stream };
+  var vinyl = this.vinyls[vinylId] = {
+    stream: stream,
+    writeCb: null,
+    endcb: null
+  };
   return multipipe(buffer(), stream); // TODO support file data streaming instead of using buffer
 
-  // assumption based on understanding: write will not be called again unti cb() is called
   function write(chunk, enc, cb) {
-    var vinylChunkId = nextId++;
-    thiz.chunks[vinylChunkId] = { type: 'write', cb: cb };
-    thiz.worker.postMessage({
+    if (vinyl.writeCb !== null) {
+      // assumption based on understanding: write will not be called again until cb() is called
+      throw new Error("write() called before previous callback invoked");
+    }
+    vinyl.writeCb = function() {
+      vinyl.writeCb = null;
+      cb.apply(this, arguments);
+    };
+    thiz._postMessage({
       type: 'VinylChunkRequest',
       vinylId: vinylId,
-      vinylChunkId: vinylChunkId,
-      chunk: chunk,
+      chunk: encodeVinyl(chunk),
       enc: enc
     });
   }
 
   function end(cb) {
-    var vinylChunkId = nextId++;
-    thiz.chunks[vinylChunkId] = { type: 'end', cb: cb };
-    thiz.worker.postMessage({
+    vinyl.endcb = cb;
+    thiz._postMessage({
       type: 'VinylChunkEndRequest',
-      vinylId: vinylId,
-      vinylChunkId: vinylChunkId
+      vinylId: vinylId
     });
   }
 };
 
 VinylParallel.prototype._onmessage = function onmessage(msg) {
   var data = msg.data;
-  console.log("[master] Message:", data);
+  console.log("[master] onmessage:", data);
   switch (data.type) {
     case 'VinylCreateResponse': {
       var vinylId = data.vinylId;
@@ -65,36 +80,40 @@ VinylParallel.prototype._onmessage = function onmessage(msg) {
       break;
     }
     case 'VinylChunkResponse': {
-      var vinylChunkId = data.vinylChunkId;
-      var vinylChunk = this.chunks[vinylChunkId];
-      if (vinylChunk.type !== 'write') {
-        throw new Error('Protocol error, expected "write" but got: ' + vinylChunk.type);
-      }
-      vinylChunk.cb();
+      var vinylId = data.vinylId;
+      var vinyl = this.vinyls[vinylId];
+      var cb = vinyl.writeCb;
+      vinyl.writeCb = null;
+      cb();
       break;
     }
     case 'VinylChunkEndResponse': {
-      var vinylChunkId = data.vinylChunkId;
-      var vinylChunk = this.chunks[vinylChunkId];
-      if (vinylChunk.type !== 'end') {
-        throw new Error('Protocol error, expected "end" but got: ' + vinylChunk.type);
-      }
-      vinylChunk.cb();
+      var vinylId = data.vinylId;
+      var vinyl = this.vinyls[vinylId];
+      var cb = vinyl.endcb;
+      vinyl.endcb = null;
+      cb();
       break;
     }
     case 'ReturnChunkRequest': {
       var vinyl = this.vinyls[data.vinylId];
       for (var i=0; i<data.chunks.length; ++i) {
         var c = data.chunks[i];
-        vinyl.stream.push(c.chunk, c.enc);
+	console.log("[master] chunk:", c);
+	if (c.chunk !== null) {
+          vinyl.stream.push(decodeVinyl(c.chunk), c.enc);
+	} else {
+          vinyl.stream.push(null);
+	}
       }
-      this.worker.postMessage({
+      this._postMessage({
         type: 'ReturnChunkResponse',
         vinylId: data.vinylId
       });
       break;
     }
   }
+  console.log("[master] /onmessage");
 };
 
 VinylParallel.prototype._onerror = function onerror(err) {

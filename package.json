@@ -27,7 +27,8 @@
   "dependencies": {
     "through2": "2.0.1",
     "tiny-worker": "1.1.4",
-    "util": "0.10.3"
+    "util": "0.10.3",
+    "vinyl": "1.2.0"
   },
   "devDependencies": {
     "multipipe": "0.3.1",
