@@ -19,6 +19,7 @@ function VinylParallel(file) {
   this.worker.onmessage = this._onmessage.bind(this);
   this.worker.onerror = this._onerror.bind(this);
   this.vinyls = {};
+  this.active = 0;
   this.stop = VinylParallel.prototype.stop.bind(this);
 }
 
@@ -42,6 +43,7 @@ VinylParallel.prototype.run = function run(jobName, jobArg) {
     writeCb: null,
     endcb: null
   };
+  this.active++;
   return multipipe(buffer(), stream); // TODO support file data streaming instead of using buffer
 
   function write(chunk, enc, cb) {
@@ -93,6 +95,8 @@ VinylParallel.prototype._onmessage = function onmessage(msg) {
       var cb = vinyl.endcb;
       vinyl.endcb = null;
       cb();
+      this.active--;
+      this.maybeTerminate();
       break;
     }
     case 'ReturnChunkRequest': {
@@ -121,8 +125,10 @@ VinylParallel.prototype._onerror = function onerror(err) {
 };
 
 VinylParallel.prototype.maybeTerminate = function maybeTerminate() {
+  console.log("[master] maybeTerminate", this.doStop, this.active);
   if (this.doStop && this.active === 0) {
-    this.terminate();
+    console.log("[master] terminate");
+    this.worker.terminate();
   }
 }
 
