@@ -51,10 +51,7 @@ VinylParallel.prototype.run = function run(jobName, jobArg) {
       // assumption based on understanding: write will not be called again until cb() is called
       throw new Error("write() called before previous callback invoked");
     }
-    vinyl.writeCb = function() {
-      vinyl.writeCb = null;
-      cb.apply(this, arguments);
-    };
+    vinyl.writeCb = cb;
     thiz._postMessage({
       type: 'VinylChunkRequest',
       vinylId: vinylId,
