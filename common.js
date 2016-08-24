@@ -1,15 +1,17 @@
 var File = require('vinyl');
 
-exports.encodeVinyl = function encodeVinyl(src) {
-  return src;
+function encodeBuffer(src) {
+  return src.toString();
 }
 
 function decodeBuffer(src) {
-  if (src.type === 'Buffer') {
-    return new Buffer(src.data);
-  } else {
-    throw new Error("Unsupported chunk format: " + src);
-  }
+  return new Buffer(src);
+}
+
+exports.encodeVinyl = function encodeVinyl(src) {
+  var dst = Object.assign({}, src);
+  dst._contents = encodeBuffer(dst._contents);
+  return dst;
 }
 
 exports.decodeVinyl = function decodeVinyl(src) {
