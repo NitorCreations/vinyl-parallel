@@ -11,7 +11,7 @@ fi
 
 sha=$(git rev-parse HEAD)
 
-for task in sync sync-fast sync-slow parallel parallel-fast paralell-slow all ; do
+for task in sync sync-fast sync-slow parallel parallel-fast parallel-slow all ; do
   rm -rf target
   echo Running gulp $task
   (
