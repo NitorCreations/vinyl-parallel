@@ -9,7 +9,7 @@ function decodeBuffer(src) {
 }
 
 exports.encodeVinyl = function encodeVinyl(src) {
-  var dst = Object.assign({}, src);
+  var dst = Object.assign(Object.create(Object.getPrototypeOf(src)), src);
   dst._contents = encodeBuffer(dst._contents);
   return dst;
 }
