@@ -2,12 +2,12 @@
 
 var readableStream = require('readable-stream');
 var buffer = require('vinyl-buffer');
-var common = require('./common');
+var transport = require('./transport');
 
 var Readable = readableStream.Readable;
 var Writable = readableStream.Writable;
-var encodeVinyl = common.encodeVinyl;
-var decodeVinyl = common.decodeVinyl;
+var encodeVinyl = transport.encodeVinyl;
+var decodeVinyl = transport.decodeVinyl;
 
 function Slave(self) {
   self.onmessage = this._onmessage.bind(this);

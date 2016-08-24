@@ -6,10 +6,10 @@ var through2 = require('through2');
 var buffer = require('vinyl-buffer');
 var multipipe = require('multipipe');
 var fs = require('fs');
-var common = require('./common');
+var transport = require('./transport');
 
-var encodeVinyl = common.encodeVinyl;
-var decodeVinyl = common.decodeVinyl;
+var encodeVinyl = transport.encodeVinyl;
+var decodeVinyl = transport.decodeVinyl;
 
 var nextId = 100;
 
